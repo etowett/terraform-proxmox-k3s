@@ -8,18 +8,7 @@ locals {
     for pool in var.node_pools :
     [
       for i in range(pool.size) :
-      merge(defaults(pool, {
-        cores          = 2
-        sockets        = 1
-        memory         = 4096
-        storage_type   = "scsi"
-        storage_id     = "local-lvm"
-        disk_size      = "20G"
-        user           = "k3s"
-        template       = var.node_template
-        network_bridge = "vmbr0"
-        network_tag    = -1
-        }), {
+      merge(pool, {
         i  = i
         ip = cidrhost(pool.subnet, i)
       })
@@ -29,7 +18,6 @@ locals {
   mapped_worker_nodes = {
     for node in local.listed_worker_nodes : "${node.name}-${node.i}" => node
   }
-
 }
 
 resource "proxmox_vm_qemu" "k3s-worker" {
@@ -43,16 +31,17 @@ resource "proxmox_vm_qemu" "k3s-worker" {
   target_node = var.proxmox_node
   name        = "${var.cluster_name}-${each.key}"
 
-  clone = each.value.template
+  clone   = each.value.template
+  qemu_os = "other"
 
-  pool = var.proxmox_resource_pool
+  # pool = var.proxmox_resource_pool
 
   # cores = 2
   cores   = each.value.cores
   sockets = each.value.sockets
   memory  = each.value.memory
 
-  agent = 1
+  agent = 0
 
   disk {
     type    = each.value.storage_type
@@ -80,13 +69,17 @@ resource "proxmox_vm_qemu" "k3s-worker" {
     ]
   }
 
-  os_type = "cloud-init"
+  os_type  = "cloud-init"
+  cpu      = "kvm64"
+  scsihw   = "virtio-scsi-pci"
+  bootdisk = "scsi0"
 
   ciuser = each.value.user
 
   ipconfig0 = "ip=${each.value.ip}/${local.lan_subnet_cidr_bitnum},gw=${var.network_gateway}"
 
-  sshkeys = file(var.authorized_keys_file)
+  # sshkeys = file(var.authorized_keys_file)
+  sshkeys = var.authorized_ssh_keys
 
   nameserver = var.nameserver
 
@@ -107,9 +100,8 @@ resource "proxmox_vm_qemu" "k3s-worker" {
         node_taints  = each.value.taints
         datastores   = []
 
-        http_proxy  = var.http_proxy
+        http_proxy = var.http_proxy
       })
     ]
   }
-
 }
