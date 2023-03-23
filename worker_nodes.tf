@@ -97,7 +97,7 @@ resource "proxmox_vm_qemu" "k3s-worker" {
         alt_names    = []
         disable      = []
         server_hosts = ["https://${local.support_node_ip}:6443"]
-        node_taints  = each.value.taints
+        node_taints  = each.value.taints == null ? [] : each.value.taints
         datastores   = []
 
         http_proxy = var.http_proxy

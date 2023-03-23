@@ -3,6 +3,10 @@ export HTTPS_PROXY="${http_proxy}"
 export http_proxy="${http_proxy}"
 export https_proxy="${http_proxy}"
 
+sudo -E apt -y remove needrestart
+sudo -E apt update
+sudo -E apt upgrade -y
+
 curl -sfL https://get.k3s.io | sh -s - ${mode} \
 %{ for component in disable ~}
 --disable ${component} \
