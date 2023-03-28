@@ -1,9 +1,9 @@
 resource "macaddress" "k3s-masters" {
-  count = var.master_nodes_count
+  count = length(var.master_nodes)
 }
 
 locals {
-  master_node_ips = [for i in range(var.master_nodes_count) : cidrhost(var.control_plane_subnet, i + 1)]
+  master_node_ips = [for i in range(length(var.master_nodes)) : cidrhost(var.control_plane_subnet, i + 1)]
 }
 
 resource "random_password" "k3s-server-token" {
@@ -17,16 +17,20 @@ resource "proxmox_vm_qemu" "k3s-master" {
     proxmox_vm_qemu.k3s-support,
   ]
 
-  count       = var.master_nodes_count
-  target_node = var.proxmox_node
-  name        = "${var.cluster_name}-master-${count.index}"
+  for_each = {
+    for idx, name in keys(var.master_nodes) :
+    idx => {
+      name = name
+      node = var.master_nodes[name]
+    }
+  }
+
+  target_node = each.value.node
+  name        = "${var.cluster_name}-master-${each.value.name}"
 
   clone   = var.node_template
   qemu_os = "other"
 
-  # pool = var.proxmox_resource_pool
-
-  # cores = 2
   cores   = var.master_node_settings.cores
   sockets = var.master_node_settings.sockets
   memory  = var.master_node_settings.memory
@@ -43,7 +47,7 @@ resource "proxmox_vm_qemu" "k3s-master" {
     bridge    = var.master_node_settings.network_bridge
     firewall  = true
     link_down = false
-    macaddr   = upper(macaddress.k3s-masters[count.index].address)
+    macaddr   = upper(macaddress.k3s-masters[each.key].address)
     model     = "virtio"
     queues    = 0
     rate      = 0
@@ -65,7 +69,7 @@ resource "proxmox_vm_qemu" "k3s-master" {
   bootdisk = "scsi0"
   ciuser   = var.master_node_settings.user
 
-  ipconfig0 = "ip=${local.master_node_ips[count.index]}/${local.lan_subnet_cidr_bitnum},gw=${var.network_gateway}"
+  ipconfig0 = "ip=${local.master_node_ips[each.key]}/${local.lan_subnet_cidr_bitnum},gw=${var.network_gateway}"
 
   sshkeys = var.authorized_ssh_keys
   # sshkeys = file(var.authorized_keys_file)
@@ -75,7 +79,7 @@ resource "proxmox_vm_qemu" "k3s-master" {
   connection {
     type = "ssh"
     user = var.master_node_settings.user
-    host = local.master_node_ips[count.index]
+    host = local.master_node_ips[each.key]
   }
 
   provisioner "remote-exec" {

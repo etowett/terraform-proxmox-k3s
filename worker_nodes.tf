@@ -7,16 +7,18 @@ locals {
   listed_worker_nodes = flatten([
     for pool in var.node_pools :
     [
-      for i in range(pool.size) :
+      for i, name in keys(pool.nodes) :
       merge(pool, {
-        i  = i
-        ip = cidrhost(pool.subnet, i)
+        name = "${pool.name}-${name}"
+        i    = i
+        pve  = pool.nodes[name]
+        ip   = cidrhost(pool.subnet, i)
       })
     ]
   ])
 
   mapped_worker_nodes = {
-    for node in local.listed_worker_nodes : "${node.name}-${node.i}" => node
+    for node in local.listed_worker_nodes : "${node.name}" => node
   }
 }
 
@@ -28,15 +30,12 @@ resource "proxmox_vm_qemu" "k3s-worker" {
 
   for_each = local.mapped_worker_nodes
 
-  target_node = var.proxmox_node
-  name        = "${var.cluster_name}-${each.key}"
+  target_node = each.value.pve
+  name        = each.key
 
   clone   = each.value.template
   qemu_os = "other"
 
-  # pool = var.proxmox_resource_pool
-
-  # cores = 2
   cores   = each.value.cores
   sockets = each.value.sockets
   memory  = each.value.memory
@@ -78,7 +77,6 @@ resource "proxmox_vm_qemu" "k3s-worker" {
 
   ipconfig0 = "ip=${each.value.ip}/${local.lan_subnet_cidr_bitnum},gw=${var.network_gateway}"
 
-  # sshkeys = file(var.authorized_keys_file)
   sshkeys = var.authorized_ssh_keys
 
   nameserver = var.nameserver

@@ -1,5 +1,5 @@
-variable "proxmox_node" {
-  description = "Proxmox node to create VMs on."
+variable "support_pve" {
+  description = "Proxmox node to create Support VM on."
   type        = string
 }
 
@@ -81,11 +81,15 @@ variable "support_node_settings" {
   })
 }
 
-variable "master_nodes_count" {
-  description = "Number of master nodes."
-  default     = 2
-  type        = number
+variable "master_nodes" {
+  type = map(any)
 }
+
+# variable "master_nodes_count" {
+#   description = "Number of master nodes."
+#   default     = 2
+#   type        = number
+# }
 
 variable "master_node_settings" {
   type = object({
@@ -105,8 +109,9 @@ variable "node_pools" {
   description = "Node pool definitions for the cluster."
   type = list(object({
 
-    name   = string,
-    size   = number,
+    name = string,
+    # size   = number,
+    nodes  = map(any)
     subnet = string,
 
     taints = optional(list(string)),

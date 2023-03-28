@@ -10,15 +10,12 @@ locals {
 }
 
 resource "proxmox_vm_qemu" "k3s-support" {
-  target_node = var.proxmox_node
+  target_node = var.support_pve
   name        = join("-", [var.cluster_name, "support"])
 
   clone   = var.node_template
   qemu_os = "other"
 
-  # pool = var.proxmox_resource_pool
-
-  # cores = 2
   cores   = var.support_node_settings.cores
   sockets = var.support_node_settings.sockets
   memory  = var.support_node_settings.memory
@@ -61,7 +58,6 @@ resource "proxmox_vm_qemu" "k3s-support" {
   ipconfig0 = "ip=${local.support_node_ip}/${local.lan_subnet_cidr_bitnum},gw=${var.network_gateway}"
 
   sshkeys = var.authorized_ssh_keys
-  # sshkeys = file(var.authorized_keys_file)
 
   nameserver = var.nameserver
 
