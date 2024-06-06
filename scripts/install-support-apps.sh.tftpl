@@ -36,5 +36,9 @@ nginx() {
     sudo -E apt install nginx -y
 }
 
+sudo -E apt -y remove needrestart
+sudo -E apt update
+sudo -E apt upgrade -y
+
 mariadb
 nginx

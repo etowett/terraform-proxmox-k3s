@@ -1,21 +1,9 @@
 resource "macaddress" "k3s-masters" {
-  count = var.master_nodes_count
+  count = length(var.master_nodes)
 }
 
 locals {
-  master_node_settings = defaults(var.master_node_settings, {
-    cores          = 2
-    sockets        = 1
-    memory         = 4096
-    storage_type   = "scsi"
-    storage_id     = "local-lvm"
-    disk_size      = "20G"
-    user           = "k3s"
-    network_bridge = "vmbr0"
-    network_tag    = -1
-  })
-
-  master_node_ips = [for i in range(var.master_nodes_count) : cidrhost(var.control_plane_subnet, i + 1)]
+  master_node_ips = [for i in range(length(var.master_nodes)) : cidrhost(var.control_plane_subnet, i + 1)]
 }
 
 resource "random_password" "k3s-server-token" {
@@ -29,36 +17,41 @@ resource "proxmox_vm_qemu" "k3s-master" {
     proxmox_vm_qemu.k3s-support,
   ]
 
-  count       = var.master_nodes_count
-  target_node = var.proxmox_node
-  name        = "${var.cluster_name}-master-${count.index}"
+  for_each = {
+    for idx, name in keys(var.master_nodes) :
+    idx => {
+      name = name
+      node = var.master_nodes[name]
+    }
+  }
 
-  clone = var.node_template
+  target_node = each.value.node
+  name        = "${var.cluster_name}-master-${each.value.name}"
 
-  pool = var.proxmox_resource_pool
+  clone   = var.node_template
+  qemu_os = "other"
 
-  # cores = 2
-  cores   = local.master_node_settings.cores
-  sockets = local.master_node_settings.sockets
-  memory  = local.master_node_settings.memory
+  cores   = var.master_node_settings.cores
+  sockets = var.master_node_settings.sockets
+  memory  = var.master_node_settings.memory
 
-  agent = 1
+  agent = 0
 
   disk {
-    type    = local.master_node_settings.storage_type
-    storage = local.master_node_settings.storage_id
-    size    = local.master_node_settings.disk_size
+    type    = var.master_node_settings.storage_type
+    storage = var.master_node_settings.storage_id
+    size    = var.master_node_settings.disk_size
   }
 
   network {
-    bridge    = local.master_node_settings.network_bridge
+    bridge    = var.master_node_settings.network_bridge
     firewall  = true
     link_down = false
-    macaddr   = upper(macaddress.k3s-masters[count.index].address)
+    macaddr   = upper(macaddress.k3s-masters[each.key].address)
     model     = "virtio"
     queues    = 0
     rate      = 0
-    tag       = local.master_node_settings.network_tag
+    tag       = var.master_node_settings.network_tag
   }
 
   lifecycle {
@@ -70,20 +63,23 @@ resource "proxmox_vm_qemu" "k3s-master" {
     ]
   }
 
-  os_type = "cloud-init"
+  os_type  = "cloud-init"
+  cpu      = "kvm64"
+  scsihw   = "virtio-scsi-pci"
+  bootdisk = "scsi0"
+  ciuser   = var.master_node_settings.user
 
-  ciuser = local.master_node_settings.user
+  ipconfig0 = "ip=${local.master_node_ips[each.key]}/${local.lan_subnet_cidr_bitnum},gw=${var.network_gateway}"
 
-  ipconfig0 = "ip=${local.master_node_ips[count.index]}/${local.lan_subnet_cidr_bitnum},gw=${var.network_gateway}"
-
-  sshkeys = file(var.authorized_keys_file)
+  sshkeys = var.authorized_ssh_keys
+  # sshkeys = file(var.authorized_keys_file)
 
   nameserver = var.nameserver
 
   connection {
     type = "ssh"
-    user = local.master_node_settings.user
-    host = local.master_node_ips[count.index]
+    user = var.master_node_settings.user
+    host = local.master_node_ips[each.key]
   }
 
   provisioner "remote-exec" {
@@ -102,7 +98,7 @@ resource "proxmox_vm_qemu" "k3s-master" {
           password = random_password.k3s-master-db-password.result
         }]
 
-        http_proxy  = var.http_proxy
+        http_proxy = var.http_proxy
       })
     ]
   }
@@ -118,7 +114,7 @@ data "external" "kubeconfig" {
     "/usr/bin/ssh",
     "-o UserKnownHostsFile=/dev/null",
     "-o StrictHostKeyChecking=no",
-    "${local.master_node_settings.user}@${local.master_node_ips[0]}",
+    "${var.master_node_settings.user}@${local.master_node_ips[0]}",
     "echo '{\"kubeconfig\":\"'$(sudo cat /etc/rancher/k3s/k3s.yaml | base64)'\"}'"
   ]
 }

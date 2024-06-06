@@ -7,29 +7,19 @@ locals {
   listed_worker_nodes = flatten([
     for pool in var.node_pools :
     [
-      for i in range(pool.size) :
-      merge(defaults(pool, {
-        cores          = 2
-        sockets        = 1
-        memory         = 4096
-        storage_type   = "scsi"
-        storage_id     = "local-lvm"
-        disk_size      = "20G"
-        user           = "k3s"
-        template       = var.node_template
-        network_bridge = "vmbr0"
-        network_tag    = -1
-        }), {
-        i  = i
-        ip = cidrhost(pool.subnet, i)
+      for i, name in keys(pool.nodes) :
+      merge(pool, {
+        name = "${pool.name}-${name}"
+        i    = i
+        pve  = pool.nodes[name]
+        ip   = cidrhost(pool.subnet, i)
       })
     ]
   ])
 
   mapped_worker_nodes = {
-    for node in local.listed_worker_nodes : "${node.name}-${node.i}" => node
+    for node in local.listed_worker_nodes : "${node.name}" => node
   }
-
 }
 
 resource "proxmox_vm_qemu" "k3s-worker" {
@@ -40,19 +30,17 @@ resource "proxmox_vm_qemu" "k3s-worker" {
 
   for_each = local.mapped_worker_nodes
 
-  target_node = var.proxmox_node
-  name        = "${var.cluster_name}-${each.key}"
+  target_node = each.value.pve
+  name        = each.key
 
-  clone = each.value.template
+  clone   = each.value.template
+  qemu_os = "other"
 
-  pool = var.proxmox_resource_pool
-
-  # cores = 2
   cores   = each.value.cores
   sockets = each.value.sockets
   memory  = each.value.memory
 
-  agent = 1
+  agent = 0
 
   disk {
     type    = each.value.storage_type
@@ -80,13 +68,16 @@ resource "proxmox_vm_qemu" "k3s-worker" {
     ]
   }
 
-  os_type = "cloud-init"
+  os_type  = "cloud-init"
+  cpu      = "kvm64"
+  scsihw   = "virtio-scsi-pci"
+  bootdisk = "scsi0"
 
   ciuser = each.value.user
 
   ipconfig0 = "ip=${each.value.ip}/${local.lan_subnet_cidr_bitnum},gw=${var.network_gateway}"
 
-  sshkeys = file(var.authorized_keys_file)
+  sshkeys = var.authorized_ssh_keys
 
   nameserver = var.nameserver
 
@@ -104,12 +95,11 @@ resource "proxmox_vm_qemu" "k3s-worker" {
         alt_names    = []
         disable      = []
         server_hosts = ["https://${local.support_node_ip}:6443"]
-        node_taints  = each.value.taints
+        node_taints  = each.value.taints == null ? [] : each.value.taints
         datastores   = []
 
-        http_proxy  = var.http_proxy
+        http_proxy = var.http_proxy
       })
     ]
   }
-
 }

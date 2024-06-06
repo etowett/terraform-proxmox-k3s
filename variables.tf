@@ -1,10 +1,15 @@
-variable "proxmox_node" {
-  description = "Proxmox node to create VMs on."
+variable "support_pve" {
+  description = "Proxmox node to create Support VM on."
   type        = string
 }
 
-variable "authorized_keys_file" {
-  description = "Path to file containing public SSH keys for remoting into nodes."
+# variable "authorized_keys_file" {
+#   description = "Path to file containing public SSH keys for remoting into nodes."
+#   type        = string
+# }
+
+variable "authorized_ssh_keys" {
+  description = "List of public SSH keys for remoting into nodes."
   type        = string
 }
 
@@ -62,37 +67,41 @@ variable "proxmox_resource_pool" {
 
 variable "support_node_settings" {
   type = object({
-    cores          = optional(number),
-    sockets        = optional(number),
-    memory         = optional(number),
-    storage_type   = optional(string),
-    storage_id     = optional(string),
-    disk_size      = optional(string),
-    user           = optional(string),
-    db_name        = optional(string),
-    db_user        = optional(string),
-    network_bridge = optional(string),
-    network_tag    = optional(number), 
+    cores          = optional(number, 2),
+    sockets        = optional(number, 1),
+    memory         = optional(number, 4096),
+    storage_type   = optional(string, "scsi"),
+    storage_id     = optional(string, "local-lvm"),
+    disk_size      = optional(string, "10G"),
+    user           = optional(string, "support"),
+    db_name        = optional(string, "k3s"),
+    db_user        = optional(string, "k3s"),
+    network_bridge = optional(string, "vmbr0"),
+    network_tag    = optional(number, -1),
   })
 }
 
-variable "master_nodes_count" {
-  description = "Number of master nodes."
-  default     = 2
-  type        = number
+variable "master_nodes" {
+  type = map(any)
 }
+
+# variable "master_nodes_count" {
+#   description = "Number of master nodes."
+#   default     = 2
+#   type        = number
+# }
 
 variable "master_node_settings" {
   type = object({
-    cores          = optional(number),
-    sockets        = optional(number),
-    memory         = optional(number),
-    storage_type   = optional(string),
-    storage_id     = optional(string),
-    disk_size      = optional(string),
-    user           = optional(string),
-    network_bridge = optional(string),
-    network_tag    = optional(number),
+    cores          = optional(number, 2),
+    sockets        = optional(number, 1),
+    memory         = optional(number, 4096),
+    storage_type   = optional(string, "scsi"),
+    storage_id     = optional(string, "local-lvm"),
+    disk_size      = optional(string, "20G"),
+    user           = optional(string, "k3s"),
+    network_bridge = optional(string, "vmbr0"),
+    network_tag    = optional(number, -1),
   })
 }
 
@@ -100,24 +109,25 @@ variable "node_pools" {
   description = "Node pool definitions for the cluster."
   type = list(object({
 
-    name   = string,
-    size   = number,
+    name = string,
+    # size   = number,
+    nodes  = map(any)
     subnet = string,
 
     taints = optional(list(string)),
 
-    cores        = optional(number),
-    sockets      = optional(number),
-    memory       = optional(number),
-    storage_type = optional(string),
-    storage_id   = optional(string),
-    disk_size    = optional(string),
-    user         = optional(string),
-    network_tag  = optional(number),
+    cores        = optional(number, 2),
+    sockets      = optional(number, 1),
+    memory       = optional(number, 4096),
+    storage_type = optional(string, "scsi"),
+    storage_id   = optional(string, "local-lvm"),
+    disk_size    = optional(string, "20G"),
+    user         = optional(string, "k3s"),
+    network_tag  = optional(number, -1),
 
-    template = optional(string),
+    template = optional(string, "ubuntu-2204-cloud"),
 
-    network_bridge = optional(string),
+    network_bridge = optional(string, "vmbr0"),
   }))
 }
 variable "api_hostnames" {
